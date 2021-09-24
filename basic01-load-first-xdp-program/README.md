@@ -39,7 +39,7 @@ ip link set dev <ifname> xdp obj xdp-drop-kern.o sec xdp
 >
 > obj xdp-drop-kern.o：指定从xdp-drop-kern.o的ELF文件中加载XDP程序；
 >
-> sec xdp：指定从ELF文件中加载的eBPF程序，即我们在[xdp-drop-kern.c](/xdp-drop-kern.c)中通过SEC(xdp)指定的section name，若未在程序中指定，这里需要使用默认的sec .text；
+> sec xdp：指定从ELF文件中加载的eBPF程序，即我们在[xdp-drop-kern.c](./xdp-drop-kern.c)中通过SEC(xdp)指定的section name，若未在程序中指定，这里需要使用默认的sec .text；
 
 这时再使用ip link \<ifname> 进行查看，即可看到xdp程序成功加载：
 
