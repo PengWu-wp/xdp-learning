@@ -28,7 +28,6 @@
 2. 克隆库、初始化子模块libbpf、编译和安装libbpf库；
 
    ```bash
-   sudo apt install -y git build-essential clang libelf-dev 
    git clone https://github.com/PengWu-wp/xdp-learning.git xdp-learning
    git submodule update --init
    cd xdp-learning
