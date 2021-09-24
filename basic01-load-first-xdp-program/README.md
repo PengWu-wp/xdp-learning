@@ -29,8 +29,8 @@
 
    ```bash
    git clone https://github.com/PengWu-wp/xdp-learning.git xdp-learning
-   git submodule update --init
    cd xdp-learning
+   git submodule update --init
    make libbpf
    ```
 
