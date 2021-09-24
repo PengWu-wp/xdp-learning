@@ -7,8 +7,8 @@ int  xdp_prog(struct xdp_md *ctx)
 {
 	char fmt[] = "Hello, XDP and eBPF!\n";
 	/* This helper function would print fmt to 
-         * /sys/kernel/debug/tracing/trace_pipe
-         */
+     * /sys/kernel/debug/tracing/trace_pipe
+     */
 	bpf_trace_printk(fmt, sizeof(fmt));					      
 					    
 	return XDP_DROP; /* Drop all packets */
