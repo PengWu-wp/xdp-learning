@@ -20,23 +20,23 @@
 1. 安装依赖；
 
    ```bash
-   sudo apt install -y git build-essential clang libelf-dev 
+   sudo apt install -y git build-essential clang libelf-dev vim pkg-config gcc-multilib
    ```
 
    libelf-dev是libbpf需要用到的库，ubuntu18.04.5默认没装；
 
-2. 克隆库、初始化子模块libbpf、编译和安装libbpf库；
+   gcc-multilib适用于交叉编译，没有这个包，一些头文件会找不到；
+
+2. 克隆库；
 
    ```bash
    git clone https://github.com/PengWu-wp/xdp-learning.git xdp-learning
-   cd xdp-learning
-   git submodule update --init
-   make libbpf
    ```
 
 3. 进入basic01文件夹，将XDP C程序编译为eBPF目标文件，我们使用clang,这将在当前目录下生成目标文件xdp-drop-kern.o；
 
    ``` bash
+   cd xdp-learning/basic01-load-first-xdp-program/
    clang -O2 -target bpf -Werror -Wall -c xdp-drop-kern.c -o xdp-drop-kern.o
    ```
 
@@ -80,7 +80,7 @@
 
    该接口上的所有数据包将会被丢弃，同时每丢到一个数据包程序还会在trace_pipe文件中打印一条语句；
 
-   可以用`sudo cat /sys/kernel/debug/tracing/trace_pipe`查看，形如：
+   可以用`sudo cat /sys/kernel/debug/tracing/trace_pipe`查看，用于简单的xdp程序debug还是很有用的；
 
    ```bash
          <idle>-0       [003] ..s. 51301.347725: 0: Hello, XDP and eBPF!
@@ -95,3 +95,51 @@
    ```
 
    
+
+# basic01-2
+
+然后我们就开始手动编写加载器吧，用C就好；这里有多种加载方式和函数可以用；还可以用BCC来加载；
+
+我们用libbpf库，编写一个简单的加载器，代码为[loader.c](./loader.c).
+
+1. 初始化子模块libbpf，运行脚本以编译出libbpf库，并将其复制到/usr/lib/以使得libbpf库能在默认位置直接找到；
+
+   ```bash
+   cd xdp-learning
+   git submodule update --init
+   ./install_libbpf.sh
+   ```
+
+   > 注：这里使用的不是最新版本的libbpf，最新的还没玩明白；
+
+2. 回到basic01文件夹，编译出加载器的可执行文件；
+
+   ```bash
+   clang -g -Wall -o loader loader.c -lbpf -lelf
+   ```
+
+3. 加载器的使用方式：
+
+   ```bash
+   usage ./loader [options] 
+   
+   Requried options:
+   -d, --dev <ifname>		Specify the device <ifname>
+   
+   Other options:
+   -h, --help		this text you see right here
+   -S, --skb-mode		Install XDP program in SKB (AKA generic) mode
+   -N, --native-mode	Install XDP program in native mode
+   -F, --force		Force install, replacing existing program on interface
+   -U, --unload		Unload XDP program instead of loading
+   -o, --obj <objname>	Specify the obj filename <objname>, default xdp-drop-kern.o
+   -s, --sec <secname>	Specify the section name <secname>, default xdp
+   ```
+
+# 总结
+
+这一节以一个简单的程序介绍了XDP程序的两种加载方式，做到真正的从零开始运行XDP程序。
+
+后面的部分会将程序编译过程以Makefile自动化，并继续XDP/eBPF其他特性的介绍和使用。
+
+
