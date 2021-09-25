@@ -34,7 +34,7 @@ static void usage(char *name) {
            "-h, --help\t\tthis text you see right here\n"
            "-S, --skb-mode\t\tInstall XDP program in SKB (AKA generic) mode\n"
            "-N, --native-mode\tInstall XDP program in native mode\n"
-           "-F, --force\t\tForce install, replacing existing program on interface"
+           "-F, --force\t\tForce install, replacing existing program on interface\n"
            "-U, --unload\t\tUnload XDP program instead of loading\n"
            "-o, --obj <objname>\tSpecify the obj filename <objname>, default xdp-drop-kern.o\n"
            "-s, --sec <secname>\tSpecify the section name <secname>, default xdp\n", name);
