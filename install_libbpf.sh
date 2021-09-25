@@ -1,5 +1,5 @@
 pushd libbpf/src/
 make
 sudo make install
-cp libbpf.so* /usr/lib/
+cp {libbpf.so*,libbpf.a}  /usr/lib/
 popd
