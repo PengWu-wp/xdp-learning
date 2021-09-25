@@ -102,7 +102,7 @@
 
 我们用libbpf库，编写一个简单的加载器，代码为[loader.c](./loader.c).
 
-1. 初始化子模块libbpf，运行脚本以编译出libbpf库，并将其复制到/usr/lib/以使得libbpf库能在默认位置直接找到；
+1. 初始化子模块libbpf，运行脚本以编译出libbpf库；
 
    ```bash
    cd xdp-learning
@@ -115,7 +115,7 @@
 2. 回到basic01文件夹，编译出加载器的可执行文件；
 
    ```bash
-   clang -g -Wall -o loader loader.c -lbpf -lelf
+   clang -g -Wall -L../libbpf/src -o loader loader.c -lbpf -lelf
    ```
 
 3. 加载器的使用方式：
@@ -141,5 +141,8 @@
 这一节以一个简单的程序介绍了XDP程序的两种加载方式，做到真正的从零开始运行XDP程序。
 
 后面的部分会将程序编译过程以Makefile自动化，并继续XDP/eBPF其他特性的介绍和使用。
+
+
+
 
 
