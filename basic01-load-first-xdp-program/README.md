@@ -5,7 +5,7 @@
 
 这一节中，我将会以第一个示例的XDP程序，演示XDP程序的编译、挂载，以及eBPF帮助函数等基本概念。
 
-# basic01-1
+### basic01-1
 
 在这部分我们将使用calng和ip工具来编译和加载XDP样例程序：[xdp-drop-kern.c](./xdp-drop-kern.c)。
 
@@ -14,8 +14,10 @@
 首先，编译和加载bpf文件需要：
 
 * 一个编译器，将我的C程序编译成eBPF的目标文件，这里我们使用clang；
-* 相关的库和头文件，我们使用libbpf；
-* 一个加载器，把我的eBPF目标文件加载到指定的接口，我们使用ip，后面再自己编写加载程序；
+* 相关的库和头文件，我们使用github上单独维护的[libbpf](../libbpf)；
+* 一个加载器，把我的eBPF目标文件加载到指定的接口，我们使用ip工具，后面再自己编写加载程序；
+
+具体步骤：
 
 1. 安装依赖；
 
@@ -27,11 +29,18 @@
 
    gcc-multilib适用于交叉编译，没有这个包，一些头文件会找不到；
 
-2. 克隆库；
+2. 克隆库，初始化子模块libbpf，运行脚本以编译安装libbpf库和头文件；
 
    ```bash
    git clone https://github.com/PengWu-wp/xdp-learning.git xdp-learning
+   cd xdp-learning
+   git submodule update --init
+   ./install_libbpf.sh
    ```
+
+   > 注：这里使用的不是最新版本的libbpf，最新的还没玩明白；
+   >
+   > 脚本会编出libbpf库，并把头文件放到编译器可以直接找到的地方，方便起见我们后面使用静态库libbpf.a
 
 3. 进入basic01文件夹，将XDP C程序编译为eBPF目标文件，我们使用clang,这将在当前目录下生成目标文件xdp-drop-kern.o；
 
@@ -49,6 +58,7 @@
    > -c：只进行preprocess、compile和assemble三个步骤；
    >
    > -o xdp-drop-kern.o：指定输出文件； 
+
 
 4. 使用ip工具将该文件加载到指定的接口上：
 
@@ -96,29 +106,19 @@
 
    
 
-# basic01-2
+### basic01-2
 
 然后我们就开始手动编写加载器吧，用C就好；这里有多种加载方式和函数可以用；还可以用BCC来加载；
 
 我们用libbpf库，编写一个简单的加载器，代码为[loader.c](./loader.c).
 
-1. 初始化子模块libbpf，运行脚本以编译出libbpf库；
+1. 到basic01文件夹，编译出加载器的可执行文件；
 
    ```bash
-   cd xdp-learning
-   git submodule update --init
-   ./install_libbpf.sh
+   clang -g -Wall -o loader loader.c -l:libbpf.a -lelf
    ```
 
-   > 注：这里使用的不是最新版本的libbpf，最新的还没玩明白；
-
-2. 回到basic01文件夹，编译出加载器的可执行文件；
-
-   ```bash
-   clang -g -Wall -L../libbpf/src -o loader loader.c -lbpf -lelf
-   ```
-
-3. 加载器的使用方式：
+2. 加载器的使用方式：
 
    ```bash
    usage ./loader [options] 
@@ -136,7 +136,7 @@
    -s, --sec <secname>	Specify the section name <secname>, default xdp
    ```
 
-# 总结
+### 总结
 
 这一节以一个简单的程序介绍了XDP程序的两种加载方式，做到真正的从零开始运行XDP程序。
 
