@@ -20,7 +20,7 @@
 1. 安装依赖；
 
    ```bash
-   sudo apt install -y git build-essential clang libelf-dev vim pkg-config gcc-multilib
+   sudo apt install -y git build-essential clang libelf-dev pkg-config gcc-multilib
    ```
 
    libelf-dev是libbpf需要用到的库，ubuntu18.04.5默认没装；
