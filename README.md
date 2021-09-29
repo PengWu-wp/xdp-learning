@@ -2,9 +2,7 @@
 
 Learning XDP and eBPF from scratch.
 
-I'll be documenting my learning of XDP from scratch in this repository. You can
-refer to my documentation to configure environment on a freshly installed ubuntu
-host, run your first XDP program, and start writing your own programs afterwards.
+I'll be documenting my learning of XDP from scratch in this repository. Even if you have little knowledge about XDP, you can refer to my documentation to configure environment on a freshly installed ubuntu host, run your first XDP program, and start writing your own programs afterwards.
 
 # xdp-learning 中文版
 
