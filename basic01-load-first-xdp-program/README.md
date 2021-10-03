@@ -45,7 +45,6 @@
 3. 进入basic01文件夹，将XDP C程序编译为eBPF目标文件，我们使用clang,这将在当前目录下生成目标文件xdp-drop-kern.o；
 
    ``` bash
-   cd xdp-learning/basic01-load-first-xdp-program/
    clang -O2 -target bpf -Werror -Wall -c xdp-drop-kern.c -o xdp-drop-kern.o
    ```
 
