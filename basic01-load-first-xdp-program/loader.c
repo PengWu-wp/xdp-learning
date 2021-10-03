@@ -104,6 +104,11 @@ int main(int argc, char **argv) {
         }
     } // end of while
 
+    if (cfg.ifindex == -1) {
+        fprintf(stderr, "Error: required option -d/--dev missing\n");
+        usage(argv[0]);
+        return 1;
+    }
     /* Unload XDP prog */
     if (cfg.do_unload) {
         err = bpf_set_link_xdp_fd(cfg.ifindex, -1, cfg.xdp_flags); // set fd -1 to unload
