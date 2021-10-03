@@ -52,11 +52,14 @@ int main(int argc, char **argv) {
             .progsec = "xdp"
     };
 
-    struct option long_options[] = {{"dev",         1, 0, 'd'},
-                                    {"skb-mode",    0, 0, 'S'},
-                                    {"native-mode", 1, 0, 'N'},
-                                    {"help",        0, 0, 'h'},
-                                    {"unload",      0, 0, 'U'}
+    struct option long_options[] = {{"dev", required_argument, 0, 'd'},
+                                    {"skb-mode", no_argument, 0, 'S'},
+                                    {"native-mode", required_argument, 0, 'N'},
+                                    {"help", no_argument, 0, 'h'},
+                                    {"unload", no_argument, 0, 'U'},
+                                    {"obj", no_argument, 0, 'o'},
+                                    {"sec", no_argument, 0, 's'}
+
     };
     int c, option_index;
     while ((c = getopt_long(argc, argv, "d:USNFho:s:", long_options, &option_index)) != EOF) {
