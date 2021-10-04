@@ -4,3 +4,4 @@
 
 basic01-load-first-xdp-program/loader
 basic02-drop-by-bpf-map/xdp-prog-user
+advanced01-af-xdp/af-xdp-user
