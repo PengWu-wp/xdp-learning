@@ -1,10 +1,10 @@
-# xdp-learning
+# xdp-learning(in progress)
 
 Learning XDP and eBPF from scratch.
 
 I'll be documenting my learning of XDP from scratch in this repository. Even if you have little knowledge about XDP, you can refer to my documentation to configure environment on a freshly installed ubuntu host, run your first XDP program, and start writing your own programs afterwards.
 
-# xdp-learning 中文版
+# xdp-learning 中文版(尚未完工)
 
 这个仓库记录了我从零开始学习XDP和eBPF的过程，即便是缺乏一些相关知识，你仍然可以参考我的文档和代码，从一个刚装好的Ubuntu主机上配置好环境、运行你第一个XDP程序，并在之后开始运行你自己的XDP程序。
 
