@@ -24,8 +24,8 @@
 #include <net/if.h>
 #include <linux/if_link.h>
 #include <linux/if_ether.h>
-#include <linux/ipv6.h>
-#include <linux/icmpv6.h>
+#include <linux/ip.h>
+#include <linux/icmp.h>
 
 #define NUM_FRAMES         4096
 #define FRAME_SIZE         XSK_UMEM__DEFAULT_FRAME_SIZE
@@ -240,18 +240,78 @@ static void complete_tx(struct xsk_socket_info *xsk)
     }
 }
 
+static inline __u16 compute_ip_checksum(struct iphdr *ip) {
+    __u32 csum = 0;
+    __u16 *next_ip_u16 = (__u16 *) ip;
+    ip->check = 0;
+
+    for (int i = 0; i < (sizeof(*ip) >> 1); i++) {
+        csum += *next_ip_u16++;
+    }
+
+    return ~((csum & 0xffff) + (csum >> 16));
+}
+
+static inline __u16 compute_icmp_checksum(struct icmphdr *icmp) {
+    __u32 csum = 0;
+    __u16 *next_icmp_u16 = (__u16 *) icmp;
+    icmp->checksum = 0;
+
+    for (int i = 0; i < (sizeof(*icmp) >> 1); i++) {
+        csum += *next_icmp_u16++;
+    }
+
+    return ~((csum & 0xffff) + (csum >> 16));
+}
+
+
+
 static bool process_packet(struct xsk_socket_info *xsk,
                            uint64_t addr, uint32_t len)
 {
-    //uint8_t *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
+    uint8_t *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
     /* Reply a ping...
      *
      */
 
     if (true) {
-        /* To be continued... */
-        //struct ethhdr *eth = (struct ethhdr *) pkt;
+        int ret;
+        uint32_t tx_idx = 0;
+        uint8_t tmp_mac[ETH_ALEN];
+        __be32 tmp_ip;
+        struct ethhdr *eth = (struct ethhdr *) pkt;
+        struct iphdr *ip = (struct iphdr *) (eth + 1);
+        struct icmphdr *icmp = (struct icmphdr *) (ip + 1);
+
+        memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
+        memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
+        memcpy(eth->h_source, tmp_mac, ETH_ALEN);
+
+        memcpy(&tmp_ip, &ip->saddr, sizeof(tmp_ip));
+        memcpy(&ip->saddr, &ip->daddr, sizeof(tmp_ip));
+        memcpy(&ip->daddr, &tmp_ip, sizeof(tmp_ip));
+
+        icmp->type = ICMP_ECHOREPLY;
+
+        ip->check = compute_ip_checksum(ip);
+
+        icmp->checksum = compute_icmp_checksum(icmp);
+
+        ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
+        if (ret != 1) {
+            /* No more transmit slots, drop the packet */
+            return false;
+        }
+
+        xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
+        xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
+        xsk_ring_prod__submit(&xsk->tx, 1);
+        xsk->outstanding_tx++;
+
+        xsk->stats.tx_bytes += len;
+        xsk->stats.tx_packets++;
+
         return true;
     }
 
