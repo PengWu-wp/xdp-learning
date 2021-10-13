@@ -61,11 +61,11 @@ struct xsk_socket_info { // 该结构体是linux源码samples示例中用的，�
     struct stats_record prev_stats;
 };
 
-static inline __u32 xsk_ring_prod__free(struct xsk_ring_prod *r) // 这居然也是你定义的？
-{
-    r->cached_cons = *r->consumer + r->size;
-    return r->cached_cons - r->cached_prod;
-}
+//static inline __u32 xsk_ring_prod__free(struct xsk_ring_prod *r) // 这居然也是你定义的？
+//{
+//    r->cached_cons = *r->consumer + r->size;
+//    return r->cached_cons - r->cached_prod;
+//}
 
 struct config {
     uint32_t xdp_flags;
@@ -243,7 +243,7 @@ static void complete_tx(struct xsk_socket_info *xsk)
 static bool process_packet(struct xsk_socket_info *xsk,
                            uint64_t addr, uint32_t len)
 {
-    uint8_t *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
+    //uint8_t *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
     /* Reply a ping...
      *
@@ -251,6 +251,7 @@ static bool process_packet(struct xsk_socket_info *xsk,
 
     if (true) {
         /* To be continued... */
+        //struct ethhdr *eth = (struct ethhdr *) pkt;
         return true;
     }
 
@@ -336,7 +337,7 @@ static uint64_t gettime(void)
     res = clock_gettime(CLOCK_MONOTONIC, &t);
     if (res < 0) {
         fprintf(stderr, "Error with gettimeofday! (%i)\n", res);
-        exit(EXIT_FAIL);
+        exit(1);
     }
     return (uint64_t) t.tv_sec * NANOSEC_PER_SEC + t.tv_nsec;
 }
@@ -414,21 +415,12 @@ static void *stats_poll(void *arg)
 
 static void exit_application(int signal)
 {
-    signal = signal; // 是传统吗？不要应该也行吧？至少删掉以后我没发现什么问题。
+    // signal = signal; // 是传统吗？不要应该也行吧？至少删掉以后我没发现什么问题。
     global_exit = true; // 定义一个全局exit变量，配合signal中断处理用于死循环的条件退出；
 }
 
 int xdp_link_detach(int ifindex, __u32 xdp_flags){
-    int err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags); // set fd -1 to unload
-    if (err) {
-        fprintf(stderr, "Error: %s() link set xdp failed (err=%d): %s\n",
-                __func__, err, strerror(-err));
-        return 1;
-    } else {
-        printf("Success: XDP prog detached from device:%s(ifindex:%d)\n",
-               ifindex, xdp_flags);
-    }
-    return 0;
+    return bpf_set_link_xdp_fd(ifindex, -1, xdp_flags); // set fd -1 to unload
 }
 
 
@@ -436,7 +428,7 @@ int xdp_link_detach(int ifindex, __u32 xdp_flags){
 
 int main(int argc, char **argv) {
     int err;
-    int xsks_map_fd;
+    //int xsks_map_fd;
     void *packet_buffer;
     uint64_t packet_buffer_size;
     struct rlimit rlim = {RLIM_INFINITY, RLIM_INFINITY}; // Resource LIMIT，一会儿用于setrlimit()的
@@ -450,7 +442,7 @@ int main(int argc, char **argv) {
 
     struct xsk_umem_info *umem;
     struct xsk_socket_info *xsk_socket;
-    struct bpf_object *bpf_obj = NULL;
+    //struct bpf_object *bpf_obj = NULL;
     pthread_t stats_poll_thread; // 干啥的？
 
     /* Global shutdown handler */
@@ -496,8 +488,8 @@ int main(int argc, char **argv) {
             case 'S':
                 cfg.xdp_flags &= ~XDP_FLAGS_MODES;    /* Clear flags */
                 cfg.xdp_flags |= XDP_FLAGS_SKB_MODE;  /* Set   flag */
-                cfg->xsk_bind_flags &= XDP_ZEROCOPY;
-                cfg->xsk_bind_flags |= XDP_COPY;
+                cfg.xsk_bind_flags &= XDP_ZEROCOPY;
+                cfg.xsk_bind_flags |= XDP_COPY;
                 break;
             case 'N':
                 cfg.xdp_flags &= ~XDP_FLAGS_MODES;    /* Clear flags */
@@ -527,7 +519,7 @@ int main(int argc, char **argv) {
                 cfg.xsk_if_queue = atoi(optarg);
                 break;
             case 'p':
-                cfg->xsk_poll_mode = true;
+                cfg.xsk_poll_mode = true;
                 break;
             case 'q':
                 verbose = false;
@@ -545,7 +537,16 @@ int main(int argc, char **argv) {
     }
     /* Unload XDP prog */
     if (cfg.do_unload) {
-        return xdp_link_detach(cfg.ifindex, cfg.xdp_flags);
+        err = xdp_link_detach(cfg.ifindex, cfg.xdp_flags);
+        if (err) {
+            fprintf(stderr, "Error: %s() link set xdp failed (err=%d): %s\n",
+                    __func__, err, strerror(-err));
+            return 1;
+        } else {
+            printf("Success: XDP prog detached from device:%s(ifindex:%d)\n",
+                   cfg.ifname, cfg.ifindex);
+            return 0;
+        }
     }
 
     /* Allow unlimited locking of memory, so all memory needed for packet
@@ -596,9 +597,9 @@ int main(int argc, char **argv) {
 
     /* Start thread to do statistics display */
     if (verbose) { // 全局变量，
-        ret = pthread_create(&stats_poll_thread, NULL, stats_poll,
+        err = pthread_create(&stats_poll_thread, NULL, stats_poll,
                              xsk_socket); // 总之就是另开一个线程跑stats_poll
-        if (ret) {
+        if (err) {
             fprintf(stderr, "ERROR: Failed creating statistics thread "
                             "\"%s\"\n", strerror(errno));
             exit(EXIT_FAILURE);

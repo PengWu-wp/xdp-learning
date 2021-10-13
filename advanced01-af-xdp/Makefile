@@ -1,12 +1,12 @@
 CC := clang
 
 BPF_CFLAGS := -O2 -target bpf -Werror -Wall -c -I../libbpf/include/uapi/
-CFLAGS := -g -Werror -Wall
+CFLAGS := -g -Werror -Wall -I../libbpf/include/uapi/
 
 EXECABLE = af-xdp-user
 BPFCODE = af-xdp-kern
 
-LIBS = -l:libbpf.a -lelf
+LIBS = -l:libbpf.a -lelf -lpthread
 
 .PHONY: clean $(BPFCODE:=.c)
 
