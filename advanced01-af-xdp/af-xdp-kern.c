@@ -18,7 +18,7 @@ struct bpf_map_def SEC("maps") xdp_stats_map = {
         .max_entries = 64,
 };
 
-SEC("xdp_sock")
+SEC("xdp")
 int xdp_sock_prog(struct xdp_md *ctx)
 {
     int index = ctx->rx_queue_index;
