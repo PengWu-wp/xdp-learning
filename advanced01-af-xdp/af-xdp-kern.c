@@ -39,7 +39,7 @@ int xdp_sock_prog(struct xdp_md *ctx)
      * 所以必须上真实物理机了。
      */
     if (bpf_map_lookup_elem(&xsks_map, &index)){
-        bpf_printk("成功到这了！\n");
+        //bpf_printk("We are here!\n");
         return bpf_redirect_map(&xsks_map, index, 0);
     }
 
