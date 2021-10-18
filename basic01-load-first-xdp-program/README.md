@@ -7,7 +7,7 @@
 
 ## basic01-1
 
-在这部分我们将使用calng和ip工具来编译和加载XDP样例程序：[xdp-drop-kern.c](./xdp-drop-kern.c)。
+在这部分我们将使用clang和ip工具来编译和加载XDP样例程序：[xdp-drop-kern.c](./xdp-drop-kern.c)。
 
 
 
