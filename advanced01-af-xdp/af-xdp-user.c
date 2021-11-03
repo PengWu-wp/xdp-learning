@@ -606,6 +606,20 @@ int main(int argc, char **argv) {
             continue;
         }
         printf("收到%d个包，开始处理\n", rcvd);
+//        printf("	当前各RING的状态：\n"
+//               "\t\tproducer\tconsumer\tcached_prod\tcached_cons\n"
+//               "    FILL_RING   %d		%d		%d		%d\n"
+//               "    COMP_RING	%d		%d		%d		%d\n"
+//               "    RX_RING	%d		%d		%d		%d\n"
+//               "    TX_RING	%d		%d		%d		%d\n\n", *xsk_info->umem->fq.producer,
+//               *xsk_info->umem->fq.consumer,
+//               xsk_info->umem->fq.cached_prod, xsk_info->umem->fq.cached_cons, *xsk_info->umem->cq.producer,
+//               *xsk_info->umem->cq.consumer,
+//               xsk_info->umem->cq.cached_prod, xsk_info->umem->cq.cached_cons, *xsk_info->rx.producer,
+//               *xsk_info->rx.consumer,
+//               xsk_info->rx.cached_prod, xsk_info->rx.cached_cons, *xsk_info->tx.producer, *xsk_info->tx.consumer,
+//               xsk_info->tx.cached_prod,
+//               xsk_info->tx.cached_cons);
 
         /* Stuff the ring with as much frames as possible
          * 发现空闲desc了马上生产；
@@ -636,7 +650,6 @@ int main(int argc, char **argv) {
             uint32_t len = xsk_ring_cons__rx_desc(&xsk_info->rx, idx_rx++)->len;
 
             uint8_t *pkt = xsk_umem__get_data(xsk_info->umem->buffer, addr); // addr只是对应的偏移量；取具体地址就是用这个函数
-            printf("pkt is %p\n",pkt);
 
             uint32_t tx_idx = 0;
             uint8_t tmp_mac[ETH_ALEN];
@@ -686,6 +699,21 @@ int main(int argc, char **argv) {
         /* Do we need to wake up the kernel for transmission */
 
         complete_tx(xsk_info);
+
+//        printf("	处理结束！当前各RING的状态：\n"
+//               "\t\tproducer\tconsumer\tcached_prod\tcached_cons\n"
+//               "    FILL_RING   %d		%d		%d		%d\n"
+//               "    COMP_RING	%d		%d		%d		%d\n"
+//               "    RX_RING	%d		%d		%d		%d\n"
+//               "    TX_RING	%d		%d		%d		%d\n\n", *xsk_info->umem->fq.producer,
+//               *xsk_info->umem->fq.consumer,
+//               xsk_info->umem->fq.cached_prod, xsk_info->umem->fq.cached_cons, *xsk_info->umem->cq.producer,
+//               *xsk_info->umem->cq.consumer,
+//               xsk_info->umem->cq.cached_prod, xsk_info->umem->cq.cached_cons, *xsk_info->rx.producer,
+//               *xsk_info->rx.consumer,
+//               xsk_info->rx.cached_prod, xsk_info->rx.cached_cons, *xsk_info->tx.producer, *xsk_info->tx.consumer,
+//               xsk_info->tx.cached_prod,
+//               xsk_info->tx.cached_cons);
     } // End of while
 
     /* Cleanup */
