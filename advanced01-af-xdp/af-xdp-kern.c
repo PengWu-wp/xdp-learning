@@ -22,16 +22,16 @@ SEC("xdp")
 int xdp_sock_prog(struct xdp_md *ctx)
 {
     int index = ctx->rx_queue_index;
-    __u32 *pkt_count;
-
-    pkt_count = bpf_map_lookup_elem(&xdp_stats_map, &index);
-    if (pkt_count) {
-        /* We pass every other packet 可是实测只有一开始的0才会被pass？ */
-        if ((*pkt_count)++ & 1){ // 这里遗留一点问题：这种是怎么看的？
-            return XDP_PASS;
-        }
-
-    }
+//    __u32 *pkt_count;
+//
+//    pkt_count = bpf_map_lookup_elem(&xdp_stats_map, &index);
+//    if (pkt_count) {
+//        /* We pass every other packet 可是实测只有一开始的0才会被pass？ */
+//        if ((*pkt_count)++ & 1){ // 这里遗留一点问题：这种是怎么看的？
+//            return XDP_PASS;
+//        }
+//
+//    }
 
     /* A set entry here means that the correspnding queue_id
      * has an active AF_XDP socket bound to it. 也就是说：
