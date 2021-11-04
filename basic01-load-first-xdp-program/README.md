@@ -77,7 +77,7 @@
    >
    > sec xdp：指定从ELF文件中加载的eBPF程序，即我们在[xdp-drop-kern.c](./xdp-drop-kern.c)中通过SEC(xdp)指定的section name，若未在程序中指定，这里需要使用默认的sec .text；
 
-   这时再使用`ip link \<ifname> `进行查看，即可看到xdp程序成功加载：
+   这时再使用`ip link show <ifname> `进行查看，即可看到xdp程序成功加载：
 
    ``` bash
    2: ens33: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 xdpgeneric qdisc fq_codel state UP mode DEFAULT group default qlen 1000
@@ -130,11 +130,11 @@
    -d, --dev <ifname>		Specify the device <ifname>
    
    Other options:
-   -h, --help		this text you see right here
-   -S, --skb-mode		Install XDP program in SKB (AKA generic) mode
-   -N, --native-mode	Install XDP program in native mode
-   -F, --force		Force install, replacing existing program on interface
-   -U, --unload		Unload XDP program instead of loading
+   -h, --help		      this text you see right here
+   -S, --skb-mode		   Install XDP program in SKB (AKA generic) mode
+   -N, --native-mode	   Install XDP program in native mode
+   -F, --force		      Force install, replacing existing program on interface
+   -U, --unload		   Unload XDP program instead of loading
    -o, --obj <objname>	Specify the obj filename <objname>, default xdp-drop-kern.o
    -s, --sec <secname>	Specify the section name <secname>, default xdp
    ```
