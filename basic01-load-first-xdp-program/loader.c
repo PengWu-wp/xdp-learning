@@ -34,6 +34,7 @@ static void usage(char *name) {
            "-h, --help\t\tthis text you see right here\n"
            "-S, --skb-mode\t\tInstall XDP program in SKB (AKA generic) mode\n"
            "-N, --native-mode\tInstall XDP program in native mode\n"
+           "-O, --offload-mode\tInstall XDP program in offload mode(NIC support needed)\n"
            "-F, --force\t\tForce install, replacing existing program on interface\n"
            "-U, --unload\t\tUnload XDP program instead of loading\n"
            "-o, --obj <objname>\tSpecify the obj filename <objname>, default xdp-drop-kern.o\n"
@@ -55,6 +56,7 @@ int main(int argc, char **argv) {
     struct option long_options[] = {{"dev", required_argument, 0, 'd'},
                                     {"skb-mode", no_argument, 0, 'S'},
                                     {"native-mode", required_argument, 0, 'N'},
+                                    {"offload-mode", required_argument, 0, 'O'},
                                     {"help", no_argument, 0, 'h'},
                                     {"unload", no_argument, 0, 'U'},
                                     {"obj", no_argument, 0, 'o'},
@@ -62,7 +64,7 @@ int main(int argc, char **argv) {
 
     };
     int c, option_index;
-    while ((c = getopt_long(argc, argv, "d:USNFho:s:", long_options, &option_index)) != EOF) {
+    while ((c = getopt_long(argc, argv, "d:USNOFho:s:", long_options, &option_index)) != EOF) {
         switch (c) {
             case 'd':
                 if (strlen(optarg) >= IF_NAMESIZE) {
@@ -86,6 +88,10 @@ int main(int argc, char **argv) {
             case 'N':
                 cfg.xdp_flags &= ~XDP_FLAGS_MODES;    /* Clear flags */
                 cfg.xdp_flags |= XDP_FLAGS_DRV_MODE;  /* Set   flag */
+                break;
+            case 'O':
+                cfg.xdp_flags &= ~XDP_FLAGS_MODES;    /* Clear flags */
+                cfg.xdp_flags |= XDP_FLAGS_HW_MODE;  /* Set   flag */
                 break;
             case 'F':
                 cfg.xdp_flags &= ~XDP_FLAGS_UPDATE_IF_NOEXIST;

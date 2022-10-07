@@ -130,11 +130,12 @@
    -d, --dev <ifname>		Specify the device <ifname>
    
    Other options:
-   -h, --help		      this text you see right here
-   -S, --skb-mode		   Install XDP program in SKB (AKA generic) mode
-   -N, --native-mode	   Install XDP program in native mode
-   -F, --force		      Force install, replacing existing program on interface
-   -U, --unload		   Unload XDP program instead of loading
+   -h, --help		this text you see right here
+   -S, --skb-mode	Install XDP program in SKB (AKA generic) mode
+   -N, --native-mode	Install XDP program in native mode
+   -O, --offload-mode	Install XDP program in offload mode(NIC support needed)
+   -F, --force		Force install, replacing existing program on interface
+   -U, --unload		Unload XDP program instead of loading
    -o, --obj <objname>	Specify the obj filename <objname>, default xdp-drop-kern.o
    -s, --sec <secname>	Specify the section name <secname>, default xdp
    ```
