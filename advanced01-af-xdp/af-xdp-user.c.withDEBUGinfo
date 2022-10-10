@@ -223,7 +223,6 @@ static void stats_print(struct stats_record *stats_rec,
            period);
 
     packets = stats_rec->tx_packets - stats_prev->tx_packets;
-
     pps = packets / period;
 
     bytes = stats_rec->tx_bytes - stats_prev->tx_bytes;
@@ -268,11 +267,13 @@ static void complete_tx(struct xsk_socket_info *xsk) {
     uint32_t idx_cq;
 
     if (!xsk->outstanding_tx) {// No TX happened, return
+        printf("        WPDEBUG (complete_tx): No TX happened, return\n");
         return;
     }
 
     /* ? */
     sendto(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, 0);
+    printf("        WPDEBUG (complete_tx): sendto() done.\n");
 
 
     /* Collect/free completed TX buffers */
@@ -282,16 +283,21 @@ static void complete_tx(struct xsk_socket_info *xsk) {
 
     /* 也就是内核生产了comp ring即代表发送完成，我们要逐一确认好（应该是非必须的吧？） */
     if (completed > 0) {
+        printf("        WPDEBUG (complete_tx): peek到comp ring中内核生产了%d个desc，"
+               "即这么多包发送成功了\n", completed);
         for (int i = 0; i < completed; i++)
             xsk_free_umem_frame(xsk,
                                 *xsk_ring_cons__comp_addr(&xsk->umem->cq,
                                                           idx_cq++));
 
         xsk_ring_cons__release(&xsk->umem->cq, completed);
+        printf("        WPDEBUG (complete_tx): 移动comp ring消费者指针\n");
 
         /* 按道理这里的completed是应该要等于xsk->outstanding_tx的 */
         xsk->outstanding_tx -= completed < xsk->outstanding_tx ?
                                completed : xsk->outstanding_tx;
+        printf("        WPDEBUG (complete_tx): 现在xsk->outstanding_tx为%d\n",
+               xsk->outstanding_tx);
     }
 }
 
@@ -460,6 +466,7 @@ int main(int argc, char **argv) {
         return -1;
     }
 
+    printf("WPDEBUG: umem memory allocated.\n");
 
     /* Initialize shared packet_buffer for umem usage
      * 这里的umem结构体定义是linux源码samples中的用法，值得参考
@@ -472,6 +479,7 @@ int main(int argc, char **argv) {
         return -1;
     }
     umem_info->buffer = packet_buffer;
+    printf("WPDEBUG: umem created! \n");
 
     /* Open and configure the AF_XDP socket (xsk) */
     xsk_info = calloc(1, sizeof(*xsk_info));
@@ -487,6 +495,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Error: Can't create xsk socket: \"%s\"\n", strerror(-err));
         return -1;
     }
+    printf("WPDEBUG: xsk created! \n");
 
     /* 后面又用不上prog_id, 要这块干啥? */
 //    uint32_t prog_id = 0;
@@ -502,6 +511,7 @@ int main(int argc, char **argv) {
         xsk_info->umem_frame_addr[i] = i * FRAME_SIZE;
     }
     xsk_info->umem_frame_free = NUM_FRAMES; // 剩余能操作的数据帧数量
+    printf("WPDEBUG: umem frame allocation initialized. (manipulate xsk_info)\n");
 
     /* 填充FILL ring, 好让kernel消费 */
     /* Stuff the receive path with buffers, we assume we have enough */
@@ -522,6 +532,7 @@ int main(int argc, char **argv) {
     // 数据更新完毕，更新生产者下标
     xsk_ring_prod__submit(&xsk_info->umem->fq, XSK_RING_PROD_NUM_DESCS);
     /* 注：生产者下标永远指向下一个可填充数据位置 */
+    printf("WPDEBUG: FILL ring stuffed.\n");
 
     /* Start thread to do statistics display */
     pthread_t stats_poll_thread;
@@ -574,6 +585,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "ERROR: no xsks map found: %s\n",
                 strerror(xsks_map_fd));
         exit(EXIT_FAILURE);
+    } else {
+        printf("WPDEBUG: xsks_map_fd found: %d\n", xsks_map_fd);
     }
     int xsk_fd = xsk_socket__fd(xsk_info->xsk);
     err = bpf_map_update_elem(xsks_map_fd, &cfg.xsk_if_queue, &xsk_fd, BPF_ANY);
@@ -633,6 +646,7 @@ int main(int argc, char **argv) {
     /**************************************************
     * Main loop
     */
+    printf("WPDEBUG: 进入收包poll循环\n");
 
     while (!global_exit) {
         if (cfg.xsk_poll_mode) {
@@ -649,6 +663,11 @@ int main(int argc, char **argv) {
         if (!rcvd) {
             continue;
         }
+        printf("WPDEBUG: peek到%d个包，开始处理\n", rcvd);
+        printf("WPDEBUG: *xsk_info->rx.producer is %d\n", *xsk_info->rx.producer);
+        printf("WPDEBUG: *xsk_info->rx.consumer is %d\n", *xsk_info->rx.consumer);
+        printf("WPDEBUG: *umem->fill.producer is %d\n", *umem_info->fq.producer);
+        printf("WPDEBUG: *umem->fill.consumer is %d\n", *umem_info->fq.consumer);
 
         /* Stuff the ring with as much frames as possible
          * 发现空闲desc了马上处理；
@@ -657,6 +676,7 @@ int main(int argc, char **argv) {
         /* 查看xsk所属umem的fill ring是否有足够本xsk空闲frame数量的空闲desc，有的话就填充 */
         stock_frames = xsk_prod_nb_free(&xsk_info->umem->fq, xsk_info->umem_frame_free);
         if (stock_frames > 0) {
+            printf("WPDEBUG: 检测到fill ring有足够的空闲，预备向其填充%d个desc\n", stock_frames);
             err = xsk_ring_prod__reserve(&xsk_info->umem->fq, stock_frames, &idx_fq);
 
             /* This should not happen, but just in case */
@@ -672,10 +692,12 @@ int main(int argc, char **argv) {
             }
 
             xsk_ring_prod__submit(&xsk_info->umem->fq, stock_frames);
+            printf("WPDEBUG: Stuff done.\n");
         }
 
         /* Process received packets */
         for (i = 0; i < rcvd; i++) {
+            printf("    WPDEBUG: 处理第%d个包\n", i);
             uint64_t addr = xsk_ring_cons__rx_desc(&xsk_info->rx, idx_rx)->addr;
             uint32_t len = xsk_ring_cons__rx_desc(&xsk_info->rx, idx_rx++)->len;
 
@@ -701,6 +723,7 @@ int main(int argc, char **argv) {
 
             ip->check = compute_ip_checksum(ip);
             icmp->checksum = compute_icmp_checksum(icmp);
+            printf("        WPDEBUG: 包处理完毕，预备发送\n");
             /* Here we sent the packet out of the receive port. Note that
              * we allocate one entry and schedule it. Your design would be
              * faster if you do batch processing/transmission */
@@ -713,12 +736,14 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "ERROR: No more transmit slots, drop the packet\n");
                 xsk_free_umem_frame(xsk_info, addr);
             }
+            printf("        WPDEBUG: TX ring中预留了1个desc用于生产（APP填充待发送报文）\n");
 
             /* 我们这里直接返回修改后的接收报文，所以复用接收报文的地址和长度即可 */
             xsk_ring_prod__tx_desc(&xsk_info->tx, tx_idx)->addr = addr;
             xsk_ring_prod__tx_desc(&xsk_info->tx, tx_idx)->len = len;
             xsk_ring_prod__submit(&xsk_info->tx, 1);
-
+            printf("        WPDEBUG: TX ring中生产了1个desc，内核应该会自动消费并发送，"
+                   "发送完再生产Comp ring\n");
             /* submit后即成功生产一个TX ring的desc，内核会自动(吧?)消费，即发送该desc */
 
             xsk_info->outstanding_tx++; // 也就是成功发送的数据包+1
@@ -729,7 +754,7 @@ int main(int argc, char **argv) {
 
         /* 其实就是移动cons指针 */
         xsk_ring_cons__release(&xsk_info->rx, rcvd);
-
+        printf("        WPDEBUG: 所有接收的数据包处理完毕，移动cons指针\n");
 
         xsk_info->stats.rx_packets += rcvd;
 
