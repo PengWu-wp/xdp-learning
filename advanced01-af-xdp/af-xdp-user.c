@@ -83,7 +83,7 @@ struct xsk_socket_info { // 该结构体是linux源码samples示例中用的，�
     uint64_t umem_frame_addr[NUM_FRAMES];
     uint32_t umem_frame_free;
 
-    uint32_t outstanding_tx; // 这个是干啥的？
+    uint32_t outstanding_tx;
 
     struct stats_record stats;
     struct stats_record prev_stats;
@@ -434,7 +434,8 @@ int main(int argc, char **argv) {
     }
 
     /* Allow unlimited locking of memory, so all memory needed for packet
-	 * buffers can be locked.
+	 * buffers can be locked. 但是我有个疑问，MEMLOCK不应该结合mlock()使用吗?我们下面
+	 * 分配umem用的是posix_memalign(), 后面也没有mlock()的操作，所以这个setrlimit的意义在哪？
 	 */
     if (setrlimit(RLIMIT_MEMLOCK, &rlim)) {
         fprintf(stderr, "Error: setrlimit(RLIMIT_MEMLOCK) failed \"%s\"\n",
