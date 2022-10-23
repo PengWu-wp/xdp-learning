@@ -42,7 +42,7 @@ static void usage(char *name) {
            "-s, --sec <secname>\tSpecify the section name <secname>, default xdp\n\n"
 
            "Map operations:\n"
-           "    --map-update \tAdd cache\n"
+           "    --map-add \tAdd cache\n"
            "    --map-delete \tDelete cache\n", name);
 } // End of usage
 
