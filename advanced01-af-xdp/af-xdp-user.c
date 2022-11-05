@@ -89,7 +89,7 @@ struct xsk_socket_info { // 该结构体是linux源码samples示例中用的，�
     struct stats_record prev_stats;
 };
 
-/***********************************************************************************************
+/*************************************************************************
  * Functions
  */
 
@@ -129,9 +129,8 @@ static void IntHandler(int signal) {
     global_exit = true;
 } /* End of IntHandler */
 
-static inline __u16
-
-compute_ip_checksum(struct iphdr *ip) {
+/*
+static inline __u16 compute_ip_checksum(struct iphdr *ip) {
     __u32 csum = 0;
     __u16 *next_ip_u16 = (__u16 *)
             ip;
@@ -143,9 +142,9 @@ compute_ip_checksum(struct iphdr *ip) {
 
     return ~((csum & 0xffff) + (csum >> 16));
 }
+*/
 
-static inline __u16
-compute_icmp_checksum(struct icmphdr *icmp) {
+static inline __u16 compute_icmp_checksum(struct icmphdr *icmp) {
     __u32 csum = 0;
     __u16 *next_icmp_u16 = (__u16 *)
             icmp;
@@ -699,8 +698,8 @@ int main(int argc, char **argv) {
             memcpy(&ip->daddr, &tmp_ip, sizeof(tmp_ip));
 
             icmp->type = ICMP_ECHOREPLY;
-
-            ip->check = compute_ip_checksum(ip);
+            /* ip checksum not affected. ignore */
+            // ip->check = compute_ip_checksum(ip);
             icmp->checksum = compute_icmp_checksum(icmp);
             /* Here we sent the packet out of the receive port. Note that
              * we allocate one entry and schedule it. Your design would be
