@@ -29,17 +29,17 @@
 
 /* Global macros */
 
-//#define NUM_FRAMES         4096
-/* 为便于理解，我们先把UMEM中帧数量设置小一点 */
-#define NUM_FRAMES         64
+#define NUM_FRAMES         4096
+/* 为便于理解，我们可以先把UMEM中帧数量设置小一点 */
+//#define NUM_FRAMES         64
 #define XSK_RING_PROD_NUM_DESCS NUM_FRAMES >> 1
 #define XSK_RING_CONS_NUM_DESCS NUM_FRAMES >> 1
 /* 默认帧大小为4096 */
 #define FRAME_SIZE         XSK_UMEM__DEFAULT_FRAME_SIZE
 
-//#define RX_BATCH_SIZE      64
-/* 为便于理解，我们先把RX_BATCH_SIZE设置小一点 */
-#define RX_BATCH_SIZE      4
+#define RX_BATCH_SIZE      64
+/* 为便于理解，我们可以先把RX_BATCH_SIZE设置小一点 */
+//#define RX_BATCH_SIZE      4
 
 #define INVALID_UMEM_FRAME UINT64_MAX
 
@@ -144,16 +144,14 @@ static inline __u16 compute_ip_checksum(struct iphdr *ip) {
 }
 */
 
-static inline __u16 compute_icmp_checksum(struct icmphdr *icmp) {
+static inline __u16 compute_icmp_checksum(struct iphdr *ip, struct icmphdr *icmp) {
     __u32 csum = 0;
-    __u16 *next_icmp_u16 = (__u16 *)
-            icmp;
+    __u16 *next_icmp_u16 = (__u16 *) icmp;
     icmp->checksum = 0;
-
-    for (int i = 0; i < (sizeof(*icmp) >> 1); i++) {
+    int tmp = ((ntohs(ip->tot_len) - (ip->ihl << 2)) >> 1);
+    for (int i = 0; i < tmp; i++) {
         csum += *next_icmp_u16++;
     }
-
     return ~((csum & 0xffff) + (csum >> 16));
 }
 
@@ -698,9 +696,12 @@ int main(int argc, char **argv) {
             memcpy(&ip->daddr, &tmp_ip, sizeof(tmp_ip));
 
             icmp->type = ICMP_ECHOREPLY;
+
             /* ip checksum not affected. ignore */
             // ip->check = compute_ip_checksum(ip);
-            icmp->checksum = compute_icmp_checksum(icmp);
+
+            icmp->checksum = compute_icmp_checksum(ip, icmp);
+
             /* Here we sent the packet out of the receive port. Note that
              * we allocate one entry and schedule it. Your design would be
              * faster if you do batch processing/transmission */
