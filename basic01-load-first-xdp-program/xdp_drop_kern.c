@@ -10,9 +10,10 @@ SEC("xdp")
 int  xdp_prog(struct xdp_md *ctx)
 {
 	/* This is a helper macro defined in bpf_helpers.h. It would
-         * print fmt to /sys/kernel/debug/tracing/trace_pipe
-         */
-	bpf_printk("Hello, XDP and eBPF!\n");					      
+	 * print fmt to /sys/kernel/debug/tracing/trace_pipe
+	 * Notice that it won't work in HW mode
+     */
+//	bpf_printk("Hello, XDP and eBPF!\n");					      
 					    
 	return XDP_DROP; /* Drop all packets */
 }
