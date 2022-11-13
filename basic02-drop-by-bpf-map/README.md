@@ -64,7 +64,7 @@ libbpf也提供了对这两种系统调用的封装：`bpf_obj_pin`和`bpf_obj_g
 
 如果装好了依赖软件，更新好了submodule，正常来说make即可；
 
-BPF映射的更新和程序的加载/卸载集合在了同一文件中，以下是使用方法。
+BPF映射的更新和程序的加载/卸载集合在了同一文件中，以下是使用方法，IPv4地址以10进制点分方式给出即可。
 
 ```bash
 usage ./xdp_prog_user [options]
