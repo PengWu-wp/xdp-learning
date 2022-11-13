@@ -7,12 +7,12 @@
 #include <linux/in.h>
 #include <bpf/bpf_helpers.h>
 
-struct bpf_map_def SEC("maps") blacklist_map = {
-        .type        = BPF_MAP_TYPE_HASH,
-        .key_size    = sizeof(__u32),
-        .value_size  = sizeof(__u32),
-        .max_entries = 1000,
-};
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 1000);
+    __type(key, __u32);
+    __type(value, __u32);
+} blacklist_map SEC(".maps");
 
 SEC("xdp")
 int  xdp_prog(struct xdp_md *ctx)
@@ -34,10 +34,10 @@ int  xdp_prog(struct xdp_md *ctx)
 
     value = bpf_map_lookup_elem(&blacklist_map, &key);
     if (value) {
-        bpf_printk("ip found in blacklist, dropped\n");
+        // bpf_printk("ip found in blacklist, dropped\n");
         return XDP_DROP;
     } else {
-        bpf_printk("Good to pass\n");
+        // bpf_printk("Good to pass\n");
         return XDP_PASS;
     }
 

@@ -3,8 +3,8 @@ CC := clang
 BPF_CFLAGS := -g -O2 -target bpf -Werror -Wall -c -I../libbpf/include/uapi/
 CFLAGS := -g -Werror -Wall -I../libbpf/include/uapi/
 
-EXECABLE = af-xdp-user
-BPFCODE = af-xdp-kern
+EXECABLE = af_xdp_user
+BPFCODE = af_xdp_kern
 
 LIBS = -l:libbpf.a -lelf -lpthread -lz
 

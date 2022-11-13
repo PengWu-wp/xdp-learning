@@ -1,12 +1,12 @@
 CC := clang
 
-BPF_CFLAGS := -O2 -target bpf -Werror -Wall -c
+BPF_CFLAGS := -g -O2 -target bpf -Werror -Wall -c
 CFLAGS := -g -Werror -Wall
 
-EXECABLE = xdp-prog-user
-BPFCODE = xdp-prog-kern
+EXECABLE = xdp_prog_user
+BPFCODE = xdp_prog_kern
 
-LIBS = -l:libbpf.a -lelf
+LIBS = -l:libbpf.a -lelf -lz
 
 .PHONY: clean $(BPFCODE:=.c)
 
