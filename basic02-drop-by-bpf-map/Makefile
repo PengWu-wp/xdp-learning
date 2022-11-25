@@ -1,22 +1,13 @@
-CC := clang
+# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-BPF_CFLAGS := -g -O2 -target bpf -Werror -Wall -c
-CFLAGS := -g -Werror -Wall
+TOOL_NAME := xdp_prog_user
+USER_TARGETS := xdp_prog_user
+XDP_TARGETS := xdp_prog_kern
+# TEST_FILE := tests/test-xdp-loader.sh
+# MAN_PAGE := xdp-loader.8
 
-EXECABLE = xdp_prog_user
-BPFCODE = xdp_prog_kern
+LIB_DIR = ../lib
 
-LIBS = -l:libbpf.a -lelf -lz
+include $(LIB_DIR)/common.mk
 
-.PHONY: clean $(BPFCODE:=.c)
 
-clean:
-	rm -f *.o $(EXECABLE)
-
-$(BPFCODE:=.o): $(BPFCODE:=.c)
-	$(CC) $(BPF_CFLAGS) $(BPFCODE:=.c) -o $(BPFCODE:=.o)
-
-$(EXECABLE): $(BPFCODE:=.o)
-	$(CC) $(CFLAGS) $(EXECABLE:=.c) -o $(EXECABLE) $(LIBS)
-
-.DEFAULT_GOAL := $(EXECABLE)

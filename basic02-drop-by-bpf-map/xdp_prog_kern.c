@@ -7,6 +7,7 @@
 #include <linux/in.h>
 #include <bpf/bpf_helpers.h>
 
+/* Use ELF Conventions to create BPF maps */
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 1000);
@@ -15,18 +16,17 @@ struct {
 } blacklist_map SEC(".maps");
 
 SEC("xdp")
-int  xdp_prog(struct xdp_md *ctx)
+int xdp_prog(struct xdp_md *ctx)
 {
-    int ipsize = 0;
     void *data = (void *) (long) ctx->data;
     void *data_end = (void *) (long) ctx->data_end;
     struct ethhdr *eth = data;
-    struct iphdr *ip;
-    ipsize = sizeof(*eth);
-    ip = data + ipsize;
-    ipsize += sizeof(struct iphdr);
-    if (data + ipsize > data_end) { // To pass eBPF verifier
-        return XDP_DROP;
+    struct iphdr *ip = data + sizeof(*eth);
+    int off = 0;
+    off = sizeof(struct ethhdr) + sizeof(struct iphdr);
+
+    if (data + off > data_end) { // To pass eBPF verifier
+        return XDP_PASS;
     }
 
     __u32 key = ip->saddr;
@@ -37,11 +37,9 @@ int  xdp_prog(struct xdp_md *ctx)
         // bpf_printk("ip found in blacklist, dropped\n");
         return XDP_DROP;
     } else {
-        // bpf_printk("Good to pass\n");
+        // bpf_printk("Okay to pass\n");
         return XDP_PASS;
     }
-
-    return XDP_PASS;
 }
 
 char _license[] SEC("license") = "GPL";

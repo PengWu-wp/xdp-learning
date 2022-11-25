@@ -1,320 +1,502 @@
 /* SPDX-License-Identifier: GPL-2.0 */
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h> // uint32_t uint16_t define
-#include <stdbool.h>
 #include <string.h>
-#include <getopt.h>
 #include <errno.h>
+#include <stdbool.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
+#include <xdp/libxdp.h>
 
 #include <arpa/inet.h>
-#include <net/if.h>
-#include <linux/if_link.h> /* depend on kernel-headers installed */
+#include <linux/err.h>
 
-/* xdp prog loading related config options */
-struct config {
-    uint32_t xdp_flags;
-    int ifindex;
-    char *ifname;
-    char filename[512];
-    char progname[32];
-    bool do_unload;
+#include "params.h"
+#include "logging.h"
+#include "util.h"
+
+#define PROG_NAME "xdp_prog_user"
+
+//static const char *map_name = "blacklist_map";
+#define MAP_PATH "/sys/fs/bpf/blacklist_map"
+const char *map_path = MAP_PATH;
+static const char *file_name[1] = {"xdp_prog_kern.o"};
+
+static const struct loadopt {
+	bool help;
+	struct iface iface;
+	struct multistring filenames;
+	const char *pin_path;
+	char *section_name;
+	char *prog_name;
+	enum xdp_attach_mode mode;
+} defaults_load = {
+		.mode = XDP_MODE_NATIVE,
+		.filenames = {file_name, 1},
+		.pin_path = MAP_PATH
 };
 
-static const char *file_path = "/sys/fs/bpf/black_list";
-
-static void usage(char *name) {
-    printf("usage %s [options] \n\n"
-           "Requried options:\n"
-           "-d, --dev <ifname>\t\tSpecify the device <ifname>\n\n"
-
-           "Other options:\n"
-           "-h, --help\t\tthis text you see right here\n"
-           "-S, --skb-mode\t\tInstall XDP program in SKB (AKA generic) mode\n"
-           "-N, --native-mode\t(default) Install XDP program in native mode\n"
-           "-H, --offload-mode\tInstall XDP program in offload (AKA HW) mode(NIC support needed)\n"
-           "-F, --force\t\tForce install, replacing existing program on interface\n"
-           "-U, --unload\t\tUnload XDP program instead of loading\n"
-           "-o, --obj <objname>\tSpecify the obj filename <objname>\n"
-           "-n, --name <progname>\tSpecify the program name <progname>\n"
-
-           "Map operations:\n"
-           "    --map-add <addr>\tAdd an IP to blacklist_map\n"
-           "    --map-delete <addr/all>\tDelete an IP to blacklist_map\n"
-           "    --map-show\t\tShow blocked IPs in blacklist_map\n", name);
-} // End of usage
+struct enum_val xdp_modes[] = {
+		{"native", XDP_MODE_NATIVE},
+		{"skb", XDP_MODE_SKB},
+		{"hw", XDP_MODE_HW},
+		{"unspecified", XDP_MODE_UNSPEC},
+		{NULL, 0}
+};
 
 
+static struct prog_option load_options[] = {
+		DEFINE_OPTION("mode", OPT_ENUM, struct loadopt, mode,
+		.short_opt = 'm',
+		.typearg = xdp_modes,
+		.metavar = "<mode>",
+		.help = "Load XDP program in <mode>; default native"),
+		DEFINE_OPTION("pin-path", OPT_STRING, struct loadopt, pin_path,
+		.short_opt = 'p',
+		.help = "Path to pin maps under (must be in bpffs)."),
+		DEFINE_OPTION("section", OPT_STRING, struct loadopt, section_name,
+		.metavar = "<section>",
+		.short_opt = 's',
+		.help = "ELF section name of program to load (default: first in file)."),
+		DEFINE_OPTION("prog-name", OPT_STRING, struct loadopt, prog_name,
+		.metavar = "<prog_name>",
+		.short_opt = 'n',
+		.help = "BPF program name of program to load (default: first in file)."),
+		DEFINE_OPTION("dev", OPT_IFNAME, struct loadopt, iface,
+		.positional = true,
+		.metavar = "<ifname>",
+		.required = true,
+		.help = "Load on device <ifname>"),
+		DEFINE_OPTION("filenames", OPT_MULTISTRING, struct loadopt, filenames,
+		.metavar = "<filenames>",
+		.short_opt = 'f',
+		.help = "Load programs from <filenames>"),
+		END_OPTIONS
+};
 
-int main(int argc, char **argv) {
-    int err;
-    int map_fd = 0;
-    __u32 key;
-    __u32 value;
-    __u32 next_key, lookup_key = -1;
+int do_load(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct loadopt *opt = cfg;
+	struct xdp_program **progs, *p;
+	char errmsg[STRERR_BUFSIZE];
+	int err = EXIT_SUCCESS;
+	size_t num_progs, i;
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
+			.pin_root_path = opt->pin_path);
 
-    struct config cfg = {
-            /* set XDP_FLAGS_UPDATE_IF_NOEXIST to avoid accidentally unloading
-             * an unrelated XDP program, a good practice */
-            .xdp_flags = XDP_FLAGS_UPDATE_IF_NOEXIST | XDP_FLAGS_DRV_MODE,
-            .ifindex   = -1,
-            .do_unload = false,
-            .filename = "xdp_prog_kern.o",
-            .progname = "xdp_prog"
-    };
+	if (opt->section_name && opt->prog_name) {
+		pr_warn("Only one of --section or --prog-name can be set\n");
+		return EXIT_FAILURE;
+	}
 
-    struct option long_options[] = {{"dev",          required_argument, 0, 'd'},
-                                    {"skb-mode",     no_argument,       0, 'S'},
-                                    {"native-mode",  required_argument, 0, 'N'},
-                                    {"offload-mode", required_argument, 0, 'H'},
-                                    {"help",         no_argument,       0, 'h'},
-                                    {"unload",       no_argument,       0, 'U'},
-                                    {"obj",          no_argument,       0, 'o'},
-                                    {"name",         no_argument,       0, 'n'},
-                                    {"map-add",      required_argument, 0, '1'},
-                                    {"map-delete",   required_argument, 0, '2'},
-                                    {"map-show",     no_argument,       0, '3'}
-    };
-    int c, option_index;
-    while ((c = getopt_long(argc, argv, "d:USNHFho:n:1:2:3", long_options, &option_index)) != EOF) {
-        switch (c) {
-            case 'd':
-                if (strlen(optarg) >= IF_NAMESIZE) {
-                    fprintf(stderr, "Error: dev name is too long\n");
-                    goto error;
-                }
-                cfg.ifname = optarg;
-                cfg.ifindex = if_nametoindex(cfg.ifname);
-                if (cfg.ifindex == 0) {
-                    fprintf(stderr, "ERR: dev name unknown err\n");
-                    goto error;
-                }
-                break;
-            case 'U':
-                cfg.do_unload = true;
-                break;
-            case 'S':
-                cfg.xdp_flags &= ~XDP_FLAGS_MODES;    /* Clear flags */
-                cfg.xdp_flags |= XDP_FLAGS_SKB_MODE;  /* Set   flag */
-                break;
-            case 'N':
-                cfg.xdp_flags &= ~XDP_FLAGS_MODES;    /* Clear flags */
-                cfg.xdp_flags |= XDP_FLAGS_DRV_MODE;  /* Set   flag */
-                break;
-            case 'H':
-                cfg.xdp_flags &= ~XDP_FLAGS_MODES;    /* Clear flags */
-                cfg.xdp_flags |= XDP_FLAGS_HW_MODE;  /* Set   flag */
-                break;
-            case 'F':
-                cfg.xdp_flags &= ~XDP_FLAGS_UPDATE_IF_NOEXIST;
-                break;
-            case 'o':
-                strncpy((char *) &cfg.filename, optarg, sizeof(cfg.filename));
-                break;
-            case 's':
-                strncpy((char *) &cfg.progname, optarg, sizeof(cfg.progname));
-                break;
-            case '1':
-                map_fd = bpf_obj_get(file_path);
-                if (map_fd < 0) {
-                    fprintf(stderr, "Error: Failed to fetch the map: %d (%s)\n",
-                            map_fd, strerror(errno));
-                    return 1;
-                }
-                key = inet_addr(optarg);
-                err = bpf_map_update_elem(map_fd, &key, &value, BPF_ANY);
-                if (err) {
-                    fprintf(stderr, "Error: Failed to update map: %d (%s)\n",
-                            map_fd, strerror(errno));
-                    return -1;
-                } else {
-                    printf("Success: map updated!\n");
-                }
-                return 0;
-            case '2':
-                map_fd = bpf_obj_get(file_path);
-                if (map_fd < 0) {
-                    fprintf(stderr, "Error: Failed to fetch the map: %d (%s)\n",
-                            map_fd, strerror(errno));
-                    return 1;
-                }
+	num_progs = opt->filenames.num_strings;
+	if (!num_progs) {
+		pr_warn("Need at least one filename to load\n");
+		return EXIT_FAILURE;
+	} else if (num_progs > 1 && opt->mode == XDP_MODE_HW) {
+		pr_warn("Cannot attach multiple programs in HW mode\n");
+		return EXIT_FAILURE;
+	}
 
-                if (!strcmp(optarg, "all")) {
-                    while (bpf_map_get_next_key(map_fd, &lookup_key, &next_key)
-                           == 0) {
-                        err = bpf_map_delete_elem(map_fd, &next_key);
-                        if (err) {
-                            fprintf(stderr, "Error: Failed to delete map: %d (%s)\n",
-                                    map_fd, strerror(errno));
-                            return 1;
-                        }
-                        lookup_key = next_key;
-                    }
-                    printf("Success: All entries deleted in map!\n");
-                } else {
-                    key = inet_addr(optarg);
-                    err = bpf_map_delete_elem(map_fd, &key);
-                    if (err) {
-                        fprintf(stderr, "Error: Failed to delete map: %d (%s)\n",
-                                map_fd, strerror(errno));
-                        return 1;
-                    } else {
-                        printf("Success: %s deleted in map!\n", optarg);
-                    }
-                }
-                return 0;
-            case '3':
-                map_fd = bpf_obj_get(file_path);
-                if (map_fd < 0) {
-                    fprintf(stderr, "Error: Failed to fetch the map: %d (%s)\n",
-                            map_fd, strerror(errno));
-                    return 1;
-                }
-                printf("black_list_ipaddr:\n");
-                while (bpf_map_get_next_key(map_fd, &lookup_key, &next_key) == 0) {
-                    struct in_addr ia = {next_key};
-                    printf("%s\n", inet_ntoa(ia));
-                    lookup_key = next_key;
-                }
-                return 0;
-            case 'h':
-                usage(argv[0]);
-                exit(0);
-                break;
-            error:
-            default:
-                usage(argv[0]);
-                return -1;
-        }
-    } // end of while
+	progs = calloc(num_progs, sizeof(*progs));
+	if (!progs) {
+		pr_warn("Couldn't allocate memory\n");
+		return EXIT_FAILURE;
+	}
 
-    if (cfg.ifindex == -1) {
-        fprintf(stderr, "Error: required option -d/--dev missing\n");
-        usage(argv[0]);
-        return -1;
-    }
-    /* Unload XDP prog */
-    if (cfg.do_unload) {
-        err = remove(file_path);
-        if (err) {
-            fprintf(stderr, "Error: pinned map remove failed: %s\n",
-                    strerror(-err));
-        } else {
-            printf("Pinned map removed\n");
-        }
+	pr_debug("Loading %zu files on interface '%s'.\n",
+			 num_progs, opt->iface.ifname);
 
-        /* bpf_set_link_xdp_fd() has been deprecated since libbpf v1.0+
-         * Use bpf_xdp_detach and bpf_xdp_attach instead.
-         */
-        err = bpf_xdp_detach(cfg.ifindex, cfg.xdp_flags, NULL);
-        if (err) {
-            fprintf(stderr, "Error: bpf_xdp_detach failed (err=%d): %s\n",
-                    err, strerror(errno));
-            return -1;
-        } else {
-            printf("Success: XDP prog detached from device:%s(ifindex:%d)\n",
-                   cfg.ifname, cfg.ifindex);
-            return 0;
-        }
-    }
+	/* libbpf spits out a lot of unhelpful error messages while loading.
+	 * Silence the logging so we can provide our own messages instead; this
+	 * is a noop if verbose logging is enabled.
+	 */
+	silence_libbpf_logging();
 
-    /* open obj */
-    struct bpf_object *obj;
-    obj = bpf_object__open_file(cfg.filename, NULL);
-    err = libbpf_get_error(obj);
-    if (err) {
-        fprintf(stderr, "Error: bpf_object__open_file failed (err=%d): %s\n",
-                err, strerror(errno));
-        if (err == -ENOENT)
-            fprintf(stderr, "No such file, or maybe the program was compiled with "
-                            "a too old version of LLVM (need v9.0+)?\n");
-        return -1;
-    }
+	retry:
+	for (i = 0; i < num_progs; i++) {
+		DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
 
-    /* Find program by program name
-     * Note that bpf_object__find_program_by_title (section name) API was deprecated
-     * since libbpf v0.7. All callers should move to
-     * bpf_object__find_program_by_name (program name) if possible, otherwise use
-     * bpf_object__for_each_program and bpf_program__section_name
-     * to find a program out from a given section name.
-     */
-    struct bpf_program *bpf_prog;
-    bpf_prog = bpf_object__find_program_by_name(obj, cfg.progname);
-    if (!bpf_prog) {
-        fprintf(stderr, "Error: bpf_object__find_program_by_name failed\n");
-        return -1;
-    }
+		p = progs[i];
+		if (p)
+			xdp_program__close(p);
 
-    if (cfg.xdp_flags & XDP_FLAGS_HW_MODE) {
-        bpf_program__set_ifindex(bpf_prog, cfg.ifindex);
-        struct bpf_map *map;
-        bpf_object__for_each_map (map, obj) {
-            bpf_map__set_ifindex(map, cfg.ifindex);
-        }
-    }
+		if (opt->prog_name) {
+			xdp_opts.open_filename = opt->filenames.strings[i];
+			xdp_opts.prog_name = opt->prog_name;
+			xdp_opts.opts = &opts;
 
-    err = bpf_program__set_type(bpf_prog, BPF_PROG_TYPE_XDP);
-    if (err) {
-        fprintf(stderr, "Error: bpf_program__set_type failed\n");
-        return -1;
-    }
+			p = xdp_program__create(&xdp_opts);
+		} else {
+			p = xdp_program__open_file(opt->filenames.strings[i],
+									   opt->section_name, &opts);
+		}
 
-    /* Load obj into kernel */
-    err = bpf_object__load(obj);
-    if (err) {
-        fprintf(stderr, "Error: bpf_object__load failed\n");
-        return 1;
-    }
+		err = libxdp_get_error(p);
+		if (err) {
+			if (err == -EPERM && !double_rlimit())
+				goto retry;
 
-    /* Find map fd and pin it to bpf file system */
-    map_fd = bpf_object__find_map_fd_by_name(obj, "blacklist_map");
-    if (map_fd < 0) {
-        fprintf(stderr, "Error: bpf_object__find_map_fd_by_name failed\n");
-        return 1;
-    }
+			libxdp_strerror(err, errmsg, sizeof(errmsg));
+			pr_warn("Couldn't open file '%s': %s\n",
+					opt->filenames.strings[i], errmsg);
+			goto out;
+		}
 
-    err = bpf_obj_pin(map_fd, file_path);
-    if (err < 0) {
-        fprintf(stderr, "Error: Failed to pin map to the file system: %d (%s)\n",
-                err, strerror(errno));
-        return 1;
-    }
+		xdp_program__print_chain_call_actions(p, errmsg, sizeof(errmsg));
+		pr_debug("XDP program %zu: Run prio: %d. Chain call actions: %s\n",
+				 i, xdp_program__run_prio(p), errmsg);
 
-    /* Get file descriptor for program */
-    int prog_fd;
-    prog_fd = bpf_program__fd(bpf_prog);
-    if (prog_fd < 0) {
-        fprintf(stderr, "Error: Couldn't get file descriptor for program\n");
-        return 1;
-    }
+		/* This will set pin_path for all maps in obj, xdp-tools will later pin them */
+		if (opt->pin_path) {
+			struct bpf_map *map;
 
-    /* load xdp prog in the specified interface */
-    err = bpf_xdp_attach(cfg.ifindex, prog_fd, cfg.xdp_flags, NULL);
-    if (err < 0) {
-        fprintf(stderr, "Error: ifindex(%d) bpf_xdp_attach failed (%d): %s\n",
-                cfg.ifindex, -err, strerror(-err));
-        switch (-err) {
-            case EBUSY:
-            case EEXIST:
-                fprintf(stderr, "Hint: XDP already loaded on device"
-                                " use --force or -F to swap/replace\n");
-                break;
-            case EOPNOTSUPP:
-                fprintf(stderr, "Hint: Native-XDP not supported"
-                                " use --skb-mode or -S\n");
-                break;
-            default:
-                break;
-        }
-        return -1;
-    }
+			bpf_object__for_each_map(map, xdp_program__bpf_obj(p)) {
+				err = bpf_map__set_pin_path(map, opt->pin_path);
+				if (err) {
+					pr_warn("Error clearing map pin path: %s\n",
+							strerror(-err));
+					goto out;
+				}
+			}
+		}
 
-    printf("Success: XDP prog loaded on device:%s(ifindex:%d)\n",
-           cfg.ifname, cfg.ifindex);
-    return 0;
+		progs[i] = p;
+	}
+
+	err = xdp_program__attach_multi(progs, num_progs,
+									opt->iface.ifindex, opt->mode, 0);
+	if (err) {
+		if (err == -EPERM && !double_rlimit())
+			goto retry;
+
+		if (err == -EOPNOTSUPP &&
+			(opt->mode == XDP_MODE_NATIVE || opt->mode == XDP_MODE_HW)) {
+			pr_warn("Attaching XDP program in %s mode not supported - try %s mode.\n",
+					opt->mode == XDP_MODE_NATIVE ? "native" : "HW",
+					opt->mode == XDP_MODE_NATIVE ? "SKB" : "native or SKB");
+		} else {
+			libbpf_strerror(err, errmsg, sizeof(errmsg));
+			pr_warn("Couldn't attach XDP program on iface '%s': %s(%d)\n",
+					opt->iface.ifname, errmsg, err);
+		}
+		goto out;
+	}
+	printf("Success: XDP program attached on iface '%s'\n", opt->iface.ifname);
+
+	out:
+	for (i = 0; i < num_progs; i++)
+		if (progs[i])
+			xdp_program__close(progs[i]);
+	free(progs);
+	return err;
+}
+
+static const struct unloadopt {
+	bool all;
+	__u32 prog_id;
+	struct iface iface;
+} defaults_unload = {};
+
+static struct prog_option unload_options[] = {
+		DEFINE_OPTION("dev", OPT_IFNAME, struct unloadopt, iface,
+		.positional = true,
+		.metavar = "<ifname>",
+		.help = "Unload from device <ifname>"),
+		DEFINE_OPTION("id", OPT_U32, struct unloadopt, prog_id,
+		.metavar = "<id>",
+		.short_opt = 'i',
+		.help = "Unload program with id <id>"),
+		DEFINE_OPTION("all", OPT_BOOL, struct unloadopt, all,
+		.short_opt = 'a',
+		.help = "Unload all programs from interface"),
+		END_OPTIONS
+};
+
+int do_unload(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct unloadopt *opt = cfg;
+	struct xdp_multiprog *mp = NULL;
+	enum xdp_attach_mode mode;
+	int err = EXIT_FAILURE;
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
+			.pin_root_path = pin_root_path);
+
+	if (!opt->all && !opt->prog_id) {
+		pr_warn("Need prog ID or --all\n");
+		goto out;
+	}
+
+	if (!opt->iface.ifindex) {
+		pr_warn("Must specify ifname\n");
+		goto out;
+	}
+
+	mp = xdp_multiprog__get_from_ifindex(opt->iface.ifindex);
+	if (IS_ERR_OR_NULL(mp)) {
+		pr_warn("No XDP program loaded on %s\n", opt->iface.ifname);
+		mp = NULL;
+		goto out;
+	}
+
+	if (opt->all) {
+		err = xdp_multiprog__detach(mp);
+		if (err) {
+			pr_warn("Unable to detach XDP program: %s\n",
+					strerror(-err));
+			goto out;
+		}
+	} else {
+		struct xdp_program *prog = NULL;
+
+		while ((prog = xdp_multiprog__next_prog(prog, mp))) {
+			if (xdp_program__id(prog) == opt->prog_id) {
+				mode = xdp_multiprog__attach_mode(mp);
+				goto found;
+			}
+		}
+
+		if (xdp_multiprog__is_legacy(mp)) {
+			prog = xdp_multiprog__main_prog(mp);
+			if (xdp_program__id(prog) == opt->prog_id) {
+				mode = xdp_multiprog__attach_mode(mp);
+				goto found;
+			}
+		}
+
+		prog = xdp_multiprog__hw_prog(mp);
+		if (xdp_program__id(prog) == opt->prog_id) {
+			mode = XDP_MODE_HW;
+			goto found;
+		}
+
+		pr_warn("Program with ID %u not loaded on %s\n",
+				opt->prog_id, opt->iface.ifname);
+		err = -ENOENT;
+		goto out;
+
+		found:
+		pr_debug("Detaching XDP program with ID %u from %s\n",
+				 xdp_program__id(prog), opt->iface.ifname);
+		err = xdp_program__detach(prog, opt->iface.ifindex, mode, 0);
+		if (err) {
+			pr_warn("Unable to detach XDP program: %s\n",
+					strerror(-err));
+			goto out;
+		}
+	}
+	printf("Success: XDP program detached from iface '%s'\n", opt->iface.ifname);
+
+	out:
+	xdp_multiprog__close(mp);
+	return err ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
+static const struct statusopt {
+	struct iface iface;
+} defaults_status = {};
+
+static struct prog_option status_options[] = {
+		DEFINE_OPTION("dev", OPT_IFNAME, struct statusopt, iface,
+		.positional = true, .metavar = "[ifname]",
+		.help = "Show status for device [ifname] (default all interfaces)"),
+		END_OPTIONS
+};
+
+int do_status(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct statusopt *opt = cfg;
+
+	printf("CURRENT XDP PROGRAM STATUS:\n\n");
+	return iface_print_status(opt->iface.ifindex ? &opt->iface : NULL);
+}
+
+static const struct cleanopt {
+	struct iface iface;
+} defaults_clean = {};
+
+static struct prog_option clean_options[] = {
+		DEFINE_OPTION("dev", OPT_IFNAME, struct cleanopt, iface,
+		.positional = true, .metavar = "[ifname]",
+		.help = "Clean up detached program links for [ifname] (default all interfaces)"),
+		END_OPTIONS
+};
+
+int do_clean(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct cleanopt *opt = cfg;
+
+	printf("Cleaning up detached XDP program links for %s\n", opt->iface.ifindex ?
+															  opt->iface.ifname : "all interfaces");
+	/* Remove pinned map */
+	int err = remove(map_path);
+	if (err) {
+		fprintf(stderr, "Error: pinned map remove failed: %s\n",
+				strerror(-err));
+		return EXIT_FAILURE;
+	} else {
+		printf("Pinned map removed\n");
+		return 0;
+	}
+
+	return libxdp_clean_references(opt->iface.ifindex);
+}
 
 
+static const struct mapopt {
+	char *key;
+	bool delete;
+	bool all;
+	bool dump;
+} defaults_map = {
+		.dump = false,
+		.all = false,
+		.delete = false
+};
+
+static struct prog_option map_options[] = {
+		DEFINE_OPTION("key", OPT_STRING, struct mapopt, key,
+		.metavar = "[key]",
+		.short_opt = 'K',
+		.help = "Update IP in black_list"),
+		DEFINE_OPTION("all", OPT_BOOL, struct mapopt, all,
+		.short_opt = 'a',
+		.help = "Delete all entries in map"),
+		DEFINE_OPTION("dump", OPT_BOOL, struct mapopt, dump,
+		.short_opt = 'd',
+		.help = "Display all entries in map"),
+		DEFINE_OPTION("delete", OPT_BOOL, struct mapopt, delete,
+		.short_opt = 'D',
+		.help = "Performing deletion, use -a / --all to delete all"),
+		END_OPTIONS
+};
+
+int do_map(const void *cfg, __unused const char *pin_root_path) {
+	const struct mapopt *opt = cfg;
+	int err;
+
+	__u32 key;
+	__u32 value = 1;
+	__u32 next_key, lookup_key = -1;
+
+
+	int map_fd = bpf_obj_get(map_path);
+	if (map_fd < 0) {
+		fprintf(stderr, "Error: Failed to fetch the map: %d (%s)\n",
+				map_fd, strerror(errno));
+		return EXIT_FAILURE;
+	}
+
+	if (opt->dump) {
+		printf("black_list_ipaddr:\n");
+		while (bpf_map_get_next_key(map_fd, &lookup_key, &next_key) == 0) {
+			struct in_addr ia = {next_key};
+			printf("%s\n", inet_ntoa(ia));
+			lookup_key = next_key;
+		}
+		return 0;
+	}
+
+	if (!opt->delete) {
+		if (!opt->key) {
+			pr_warn("Key not specified, use -K/--key\n");
+			return EXIT_FAILURE;
+		}
+		key = inet_addr(opt->key);
+		err = bpf_map_update_elem(map_fd, &key, &value, BPF_ANY);
+		if (err) {
+			fprintf(stderr, "Error: Failed to update map: %d (%s)\n",
+					map_fd, strerror(errno));
+			return EXIT_FAILURE;
+		}
+		printf("Success: map updated\n");
+
+	} else {
+		if (opt->all) {
+
+			while (bpf_map_get_next_key(map_fd, &lookup_key, &next_key) == 0) {
+				err = bpf_map_delete_elem(map_fd, &next_key);
+				if (err) {
+					fprintf(stderr, "Error: Failed to delete map: %d (%s)\n",
+							map_fd, strerror(errno));
+					return EXIT_FAILURE;
+				}
+				lookup_key = next_key;
+			}
+			printf("Success: All entries deleted in map!\n");
+		} else {
+			if (!opt->key) {
+				pr_warn("Key not specified, use -K/--key\n");
+				return EXIT_FAILURE;
+			}
+			key = inet_addr(opt->key);
+			value = 0;
+			err = bpf_map_lookup_elem(map_fd, &key, &value);
+			if (err) {
+				fprintf(stderr, "Error: bpf_map_lookup_elem failed: %d (%s)\n",
+						map_fd, strerror(errno));
+				return EXIT_FAILURE;
+			}
+			if (!value) {
+				printf("'%s' not exists in map\n",opt->key);
+				return 0;
+			}
+			err = bpf_map_delete_elem(map_fd, &key);
+			if (err) {
+				fprintf(stderr, "Error: Failed to delete map: %d (%s)\n",
+						map_fd, strerror(errno));
+				return EXIT_FAILURE;
+			}
+			printf("Success: '%s' deleted in map\n", opt->key);
+		}
+	}
+	return 0;
+}
+
+
+int do_help(__unused const void *cfg, __unused const char *pin_root_path) {
+	fprintf(stderr,
+			"Usage: xdp-loader COMMAND [options]\n"
+			"\n"
+			"COMMAND can be one of:\n"
+			"       load        - load an XDP program on an interface\n"
+			"       unload      - unload an XDP program from an interface\n"
+			"       map         - perform map updates and key deletions\n"
+			"       status      - show current XDP program status\n"
+			"       clean       - clean up detached program links in XDP bpffs directory\n"
+			"       help        - show this help message\n"
+			"\n"
+			"Use 'xdp-loader COMMAND --help' to see options for each command\n");
+	return -1;
+}
+
+
+static const struct prog_command cmds[] = {
+		DEFINE_COMMAND(load, "Load an XDP program on an interface"),
+		DEFINE_COMMAND(unload, "Unload an XDP program from an interface"),
+		DEFINE_COMMAND(clean, "Clean up detached program links in XDP bpffs directory"),
+		DEFINE_COMMAND(status, "Show XDP program status"),
+		DEFINE_COMMAND(map, "Update eBPF map"),
+		{ .name = "help", .func = do_help, .no_cfg = true },
+		END_COMMANDS
+};
+
+union all_opts {
+	struct loadopt load;
+	struct unloadopt unload;
+	struct statusopt status;
+	struct mapopt map;
+};
+
+int main(int argc, char **argv)
+{
+	if (argc > 1)
+		return dispatch_commands(argv[1], argc - 1, argv + 1, cmds,
+								 sizeof(union all_opts), PROG_NAME, false);
+
+	return do_help(NULL, NULL);
 }
