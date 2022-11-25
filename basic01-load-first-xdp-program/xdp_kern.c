@@ -11,11 +11,13 @@ int  xdp_prog(struct xdp_md *ctx)
 {
 	/* This is a helper macro defined in bpf_helpers.h. It would
 	 * print fmt to /sys/kernel/debug/tracing/trace_pipe
-	 * Notice that it won't work in HW mode
-     */
+	 * Noticed that it is not supported in HW mode
+         */
 //	bpf_printk("Hello, XDP and eBPF!\n");					      
 					    
 	return XDP_DROP; /* Drop all packets */
+	// return XDP_PASS; /* Pass all packets to kernel */
+	// return XDP_TX;   /* TX bouncing the received packet-page back out the same NIC it arrived on */
 }
 /* Linux kernel will refuse XDP progs using other licenses */
 char _license[] SEC("license") = "GPL";
