@@ -19,6 +19,8 @@
 
 #define PROG_NAME "xdp-loader"
 
+static const char *file_name[1] = {"xdp_kern.o"};
+
 static const struct loadopt {
 	bool help;
 	struct iface iface;
@@ -28,7 +30,8 @@ static const struct loadopt {
 	char *prog_name;
 	enum xdp_attach_mode mode;
 } defaults_load = {
-	.mode = XDP_MODE_NATIVE
+	.mode = XDP_MODE_NATIVE,
+	.filenames = {file_name, 1}
 };
 
 struct enum_val xdp_modes[] = {
@@ -63,9 +66,8 @@ static struct prog_option load_options[] = {
 		      .required = true,
 		      .help = "Load on device <ifname>"),
 	DEFINE_OPTION("filenames", OPT_MULTISTRING, struct loadopt, filenames,
-		      .positional = true,
 		      .metavar = "<filenames>",
-		      .required = true,
+		      .short_opt = 'f',
 		      .help = "Load programs from <filenames>"),
 	END_OPTIONS
 };
