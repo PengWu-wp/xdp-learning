@@ -15,7 +15,8 @@ endif
 
 include version.mk
 
-UTILS := xdp-filter xdp-loader xdp-dump basic01-load-first-xdp-program basic02-drop-by-bpf-map 
+UTILS := xdp-filter xdp-loader xdp-dump basic01-load-first-xdp-program basic02-drop-by-bpf-map \
+        experiment01-nicache	
 SUBDIRS := lib $(UTILS)
 .PHONY: check_submodule help clobber distclean clean install test libxdp $(SUBDIRS)
 
